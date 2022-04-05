@@ -213,7 +213,6 @@ def countCrossStatistics(raw_data: list, sensor_names: str, window:int=240, step
                 temp_na_corr_sensors.append(np.corrcoef(df_window_1[i], df_window_2[i])[0,-1]) #-- Coeffs for each sensor per axis pair
             na_corr_sensors.append(np.nanmean(temp_na_corr_sensors,axis=0)) #-- Complete coeffs for each sensor per axis pair
 
-
             df_window_1 = raw_values[c1,iWindow:iWindow+window,:]
             df_window_2 = raw_values[c2,iWindow:iWindow+window,:]
             na_diff_axis.append(np.mean(np.nanmean(np.subtract(df_window_1, df_window_2), axis=0),axis=0)) #-- Difference for X,Y,Z per sensor pair
@@ -372,4 +371,15 @@ def interpolateSensorData(inputData, frequency):
     return pd.DataFrame(dataInterpolated, columns=columns)
 
 
-extractFeatures(PATHS,SENSORS)
+# extractFeatures(PATHS,SENSORS)
+D = loadData(PATHS[0],SENSORS[0])
+D2 = loadData(PATHS[0],SENSORS[1])
+D3 = loadData(PATHS[0],SENSORS[2])
+
+
+D.columns = [f"{str(SENSORS[0][1])}_{x}" for x in D.columns]
+D2.columns = [f"{str(SENSORS[1][1])}_{x}" for x in D2.columns]
+D3.columns = [f"{str(SENSORS[2][1])}_{x}" for x in D3.columns]
+
+DF = pd.concat([D,D2,D3], axis=1)
+DF.to_csv("majord.csv")
