@@ -1,7 +1,7 @@
 import os
 import typing
 import itertools
-from matplotlib.pyplot import axes
+import traceback
 import numpy as np
 import pandas as pd
 import scipy as sp
@@ -166,8 +166,6 @@ def countCrossStatistics(raw_data: list, sensor_names: str, window:int=240, step
     '''
 
     ## TO DO
-    #-- Check if features actually contain dataframes
-    #-- Do something not to create combs2
     #-- Rewrite the nasty part at the end with counting diffs and corrs
 
     ## Create useful variables
@@ -181,66 +179,87 @@ def countCrossStatistics(raw_data: list, sensor_names: str, window:int=240, step
     diffnames = [*[f"{sensor_names[int(x[0])]}{sensor_names[int(x[1])]}_diff" for x in combs],*[f"{axes_names[int(x[0])]}{axes_names[int(x[1])]}_diff" for x in combs]]
     corrnames = [*[f"{sensor_names[int(x[0])]}{sensor_names[int(x[1])]}_corr" for x in combs],*[f"{axes_names[int(x[0])]}{axes_names[int(x[1])]}_corr" for x in combs]]
     new_columns = [*sumnames, *magnames, *diffnames, *corrnames]
+    window_problem = False
     
     ## Lists for counted statistics
-    na_sum_axis: list = []
-    na_mag_axis: list = []
-    na_sum_sensors: list = []
-    na_mag_sensors: list = []
-    na_diff_axis: list = []
-    na_corr_axis: list = []
+    na_sum_axis: list = [] #-- sum_xyz
+    na_mag_axis: list = [] #-- NOT COUNTED in Franchak
+    na_sum_sensors: list = [] #-- ath_sum
+    na_mag_sensors: list = [] #-- ath_mag
+    na_diff_axis: list = [] #-- diff_xyz
+    na_corr_axis: list = [] #-- corr_xyz
     na_diff_sensors: list = []
     na_corr_sensors: list = []
-
+    na_diffm_axis: list = []
+    na_corrm_axis: list = [] 
+    na_diffm_sensors: list = [] #-- diffm
+    na_corrm_sensors: list = [] #-- corrm
+    
     ## Iterate over windows on raw sensor data
     for iWindow in range(0,df_len,step):
-        temp_s: list = []
-        df_window = raw_values[:,iWindow:iWindow+window,:] #-- Grab the window from raw data for calculations
+
+        try:
+            df_window = raw_values[:,iWindow:iWindow+window,:] #-- Grab the window from raw data for calculations
+        except IndexError as e:
+            window_problem_desc = traceback.format_exc()
+            print(window_problem_desc)
+            break
+        
         na_sum_sensors.append(np.sum(np.nansum(df_window,axis=1),axis=1)) #-- Sums for each sensor
         na_sum_axis.append(np.sum(np.nansum(df_window,axis=0),axis=0)) #-- Sums for X,Y,Z
         na_mag_sensors.append(np.sqrt(np.sum(np.nansum(np.square(df_window), axis=1),axis=1))) #-- Magnitude for each sensor
         na_mag_axis.append(np.sqrt(np.sum(np.nansum(np.square(df_window), axis=0),axis=0))) #-- Magnitude for X,Y,Z
-        
+
         ## Iterate over combinations to make pairwise corrs and diffs
         for c in combs:
             c1, c2 = int(c[0]), int(c[1])
 
-            df_window_1 = raw_values[:,iWindow:iWindow+window,c1]
-            df_window_2 = raw_values[:,iWindow:iWindow+window,c2]
-            na_diff_sensors.append(np.mean(np.nanmean(np.subtract(df_window_1, df_window_2), axis=1),axis=0)) #-- Difference for each sensor per axis pair
-            temp_na_corr_sensors: list = []
-            for i in range(len(df_window_1)):
-                temp_na_corr_sensors.append(np.corrcoef(df_window_1[i], df_window_2[i])[0,-1]) #-- Coeffs for each sensor per axis pair
-            na_corr_sensors.append(np.nanmean(temp_na_corr_sensors,axis=0)) #-- Complete coeffs for each sensor per axis pair
+            df_window_1 = np.nansum(raw_values[:,iWindow:iWindow+window,c1],axis=1)
+            df_window_2 = np.nansum(raw_values[:,iWindow:iWindow+window,c2],axis=1)
+            df_window_mag1 = np.sqrt(np.nansum(np.square(raw_values[:,iWindow:iWindow+window,c1]), axis=1))
+            df_window_mag2 = np.sqrt(np.nansum(np.square(raw_values[:,iWindow:iWindow+window,c2]), axis=1))
+            na_diff_sensors.append(np.mean(np.subtract(df_window_1, df_window_2), axis=0)) #-- Difference for each sensor per axis pair
+            na_diffm_sensors.append(np.mean(np.subtract(df_window_mag1, df_window_mag2), axis=0))
+            na_corr_sensors.append(np.corrcoef(df_window_1, df_window_2)[0,-1]) #-- Coeffs for each sensor per axis pair
+            na_corrm_sensors.append(np.corrcoef(df_window_mag1, df_window_mag2)[0,-1])
 
-            df_window_1 = raw_values[c1,iWindow:iWindow+window,:]
-            df_window_2 = raw_values[c2,iWindow:iWindow+window,:]
-            na_diff_axis.append(np.mean(np.nanmean(np.subtract(df_window_1, df_window_2), axis=0),axis=0)) #-- Difference for X,Y,Z per sensor pair
-            temp_na_corr_axis: list = []
-            for i in range(len(df_window_1[0])):
-                temp_na_corr_axis.append(np.corrcoef(df_window_1[:,i], df_window_2[:,i])[0,-1]) #-- Coeffs for X,Y,Z per sensor pair
-            na_corr_axis.append(np.nanmean(temp_na_corr_axis,axis=0)) #-- Complete coeffs for X,Y,Z per sensor pair
-            
-    ## Separate the long vectors into separate columns for each axis and sensor
-    na_diff_axis = [x for x in equalSplit(na_diff_axis, 571)]
-    na_corr_axis = [x for x in equalSplit(na_corr_axis, 571)]
-    na_diff_sensors = [x for x in equalSplit(na_diff_sensors, 571)]
-    na_corr_sensors = [x for x in equalSplit(na_corr_sensors, 571)]
-    
-    ## Turn np.arrays into list for later merging
-    na_sum_sensors = [list(x) for x in na_sum_sensors]
-    na_sum_axis = [list(x) for x in na_sum_axis]
-    na_mag_sensors = [list(x) for x in na_mag_sensors]
-    na_mag_axis = [list(x) for x in na_mag_axis]
+            df_window_1 = np.nansum(raw_values[c1,iWindow:iWindow+window,:],axis=1)
+            df_window_2 = np.nansum(raw_values[c2,iWindow:iWindow+window,:],axis=1)
+            df_window_mag1 = np.sqrt(np.nansum(np.square(raw_values[c1,iWindow:iWindow+window,:]), axis=1))
+            df_window_mag2 = np.sqrt(np.nansum(np.square(raw_values[c2,iWindow:iWindow+window,:]), axis=1))
+            na_diff_axis.append(np.mean(np.subtract(df_window_1, df_window_2), axis=0)) #-- Difference for X,Y,Z per sensor pair
+            na_diffm_axis.append(np.mean(np.subtract(df_window_mag1, df_window_mag2), axis=0))
+            na_corr_axis.append(np.corrcoef(df_window_1, df_window_2)[0,-1]) #-- Coeffs for X,Y,Z per sensor pair
+            na_corrm_axis.append(np.corrcoef(df_window_mag1, df_window_mag2)[0,-1])
 
-    ## Merge all the statistics into one list
-    all_stats = [[*na_sum_sensors[i], *na_sum_axis[i], *na_mag_sensors[i], *na_mag_axis[i], 
-    na_diff_sensors[0][i],na_diff_sensors[1][i],na_diff_sensors[2][i],
-    na_diff_axis[0][i],na_diff_axis[1][i],na_diff_axis[2][i],
-    na_corr_sensors[0][i],na_corr_sensors[1][i],na_corr_sensors[2][i],
-    na_corr_axis[0][i],na_corr_axis[1][i],na_corr_axis[2][i]] for i in range(len(na_sum_sensors))]
-    
-    return pd.DataFrame(all_stats,columns=new_columns)
+    if ~window_problem:
+        ## Separate the long vectors into separate columns for each axis and sensor
+        l = len(na_diff_axis) // len(combs)
+        na_diff_axis = [x for x in equalSplit(na_diff_axis, l)]
+        na_corr_axis = [x for x in equalSplit(na_corr_axis, l)]
+        na_diff_sensors = [x for x in equalSplit(na_diff_sensors, l)]
+        na_corr_sensors = [x for x in equalSplit(na_corr_sensors, l)]
+        na_diffm_axis = [x for x in equalSplit(na_diffm_axis, l)]
+        na_corrm_axis = [x for x in equalSplit(na_corrm_axis, l)]
+        na_diffm_sensors = [x for x in equalSplit(na_diffm_sensors, l)]
+        na_corrm_sensors = [x for x in equalSplit(na_corrm_sensors, l)]
+        
+        ## Turn np.arrays into list for later merging
+        na_sum_sensors = [list(x) for x in na_sum_sensors]
+        na_sum_axis = [list(x) for x in na_sum_axis]
+        na_mag_sensors = [list(x) for x in na_mag_sensors]
+        na_mag_axis = [list(x) for x in na_mag_axis]
+
+        ## Merge all the statistics into one list
+        all_stats = [[*na_sum_sensors[i], *na_sum_axis[i], *na_mag_sensors[i], *na_mag_axis[i], 
+        na_diff_sensors[0][i],na_diff_sensors[1][i],na_diff_sensors[2][i],
+        na_diff_axis[0][i],na_diff_axis[1][i],na_diff_axis[2][i],
+        na_corr_sensors[0][i],na_corr_sensors[1][i],na_corr_sensors[2][i],
+        na_corr_axis[0][i],na_corr_axis[1][i],na_corr_axis[2][i]] for i in range(len(na_sum_sensors))]
+        
+        return pd.DataFrame(all_stats,columns=new_columns)
+    else:
+        return pd.DataFrame({"Traceback":window_problem_desc})
 
 
 def extractFeatures(subjects: list, sensors: list, stop_iter: int = 1, save_each: bool = True, window: int = 240, step: int = 60) -> dict:
@@ -260,12 +279,13 @@ def extractFeatures(subjects: list, sensors: list, stop_iter: int = 1, save_each
     while iii != stop_iter:
         subject = subjects[iii]
         sub_name = subject.split("/")[1]
+        print(f"Current subject: {sub_name}\n")
 
         ## Start with creating variables for storing calculated features and raw sensor data
         features: list = [] #-- Here we deposit calculated stats for given subject
         raw_data: list = [] #-- Here we store raw sensor data
         for sensor in sensors:
-            current_df = selectSensorColumns(loadData(subject, sensor))
+            current_df = interpolateSensorData(selectSensorColumns(loadData(subject, sensor)),60)
             raw_data.append(current_df)
             features.append(countStatistics(current_df, str(sensor[1]))) #-- Count statistics for sensor
         features.append(countCrossStatistics(raw_data, sensors)) # Count cross statistics
@@ -332,54 +352,35 @@ def interpolateSensorData(inputData, frequency):
         dataInterpolated: The interpolated and filtereddata.
     '''
 
-    ## TO DO
-    # Fix the error in interp1d
-
     # We remove the columns 1-2 as we will remove them as well later on
-    columns = inputData.columns[2:]
+    columns = inputData.columns
     dataInterpolated = []
     
     ## Interpolate the data
-    # We remove the 1-2 column because it contains
-    # irrelevant data that does not need to be interpolated.
     if ~(inputData.empty):
-        for iColumn in range(2,inputData.shape[1]):
+        for iColumn in range(inputData.shape[1]):
             if (inputData.iloc[:,iColumn].isna()-1).sum() == 0:
                 dataInterpolated.append([inputData.iloc[:,iColumn]])
             else:
                 # Calculate error between the mediann filter model and original
                 x = inputData.iloc[:,iColumn]
+
                 # Interpolate them using spline interpolation
-                xTime = np.arange(1/frequency,1/frequency*(inputData.iloc[:,0].shape[0]+1),1/frequency)
-                # Before interpolating we need to make sure that the last values are
-                # not NaN because that can return problems in the interpolation
-                if np.isnan(x.iloc[-1]):
-                    for iNaN in range(len(x)-1,-1,-1):
-                        if np.isnan(x[iNaN]):
-                            pass
-                        else:
-                            position = iNaN
-                            x[position+1:-1] = x[position]
-                            break
-                x[np.isnan(x)] = interp1d(xTime[~np.isnan(x)],x[~np.isnan(x)],"cubic")
-                ## ERROR to fix
-                # AttributeError: type object 'numpy.float64' has no attribute 'kind'
-                X_Interpolated = x
+                xTime = np.arange(1/frequency,1/frequency*(inputData.iloc[:,0].shape[0]+1),1/frequency, dtype="float32")
+                x = np.asarray(x,dtype="float32")
+                f = interp1d(xTime[~np.isnan(x)],x[~np.isnan(x)],"cubic",fill_value="extrapolate")
+
+                # Interpolate if there are NaNs in x
+                if sum(np.isnan(x)) > 0:
+                    X_Interpolated = [*x[~np.isnan(x)],f(xTime[np.isnan(x)])]
+                else:
+                    X_Interpolated = x
+
                 # Smooth the data a bit under a median filter
                 dataInterpolated.append(medfilt(X_Interpolated, 3))
-                
+
+    dataInterpolated = np.array(dataInterpolated,dtype="float16").T
     return pd.DataFrame(dataInterpolated, columns=columns)
 
 
-# extractFeatures(PATHS,SENSORS)
-D = loadData(PATHS[0],SENSORS[0])
-D2 = loadData(PATHS[0],SENSORS[1])
-D3 = loadData(PATHS[0],SENSORS[2])
-
-
-D.columns = [f"{str(SENSORS[0][1])}_{x}" for x in D.columns]
-D2.columns = [f"{str(SENSORS[1][1])}_{x}" for x in D2.columns]
-D3.columns = [f"{str(SENSORS[2][1])}_{x}" for x in D3.columns]
-
-DF = pd.concat([D,D2,D3], axis=1)
-DF.to_csv("majord.csv")
+extractFeatures(PATHS,SENSORS)
