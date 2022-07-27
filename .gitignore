@@ -4,3 +4,4 @@ Extracted features
 *.txt
 *.m
 *.R
+.DS_Store

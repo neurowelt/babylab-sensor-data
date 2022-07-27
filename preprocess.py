@@ -188,10 +188,10 @@ def countCrossStatistics(raw_data: list, sensor_names: str, window:int=240, step
     na_mag_sensors: list = [] #-- ath_mag
     na_diff_axis: list = [] #-- diff_xyz
     na_corr_axis: list = [] #-- corr_xyz
-    na_diff_sensors: list = []
-    na_corr_sensors: list = []
-    na_diffm_axis: list = []
-    na_corrm_axis: list = [] 
+    na_diff_sensors: list = [] #-- diff_123
+    na_corr_sensors: list = [] #-- corr_123
+    na_diffm_axis: list = [] #-- NOT COUNTED in Franchak
+    na_corrm_axis: list = [] #-- NOT COUNTED in Franchak
     na_diffm_sensors: list = [] #-- diffm
     na_corrm_sensors: list = [] #-- corrm
     
