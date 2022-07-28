@@ -5,3 +5,4 @@ Extracted features
 *.m
 *.R
 .DS_Store
+*.ipynb
