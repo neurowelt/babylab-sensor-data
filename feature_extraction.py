@@ -175,12 +175,6 @@ def countStatistics(df: pd.DataFrame, sensor_name:str, window:int=240, step:int=
     measures = ["mean","median","std","skewness","kurtosis","per25","per75","min","max",] #-- sum removed
 
     ## Extract windows and calculate statistics
-    ## TO DO use this loop to actually count all the statistics
-    #-- take as input the three loaded sensor dataframes
-    #-- count the singular statistics as well as the pairs and cross sensor & axis stats
-    #-- how do you calculate difference score? (it is calculated within a window)
-    #-- how do you calculate correlation? Pearsons r? something else? (as well calculated within a window)
-    #-- check out franchacks github, casue there he does the difference score!
     for iWindow in range(0,len(df),step):
         temp_s = []
         
@@ -213,9 +207,6 @@ def countCrossStatistics(raw_data: list, sensor_names: str, window:int=240, step
     This function counts the cross-sensor and cross-axis statistics for a group of sensors for a given subject
     '''
 
-    ## TO DO
-    #-- Rewrite the nasty part at the end with counting diffs and corrs
-
     ## Create useful variables
     df_len = len(raw_data[0].values)
     raw_a_values = np.array([np.array(x.values[:,0:3],dtype="float32") for x in raw_data]) #-- Take just the X,Y,Z columns
@@ -224,11 +215,6 @@ def countCrossStatistics(raw_data: list, sensor_names: str, window:int=240, step
     axes_names = ["X", "Y", "Z"]
     gyr_names = ["Roll", "Pitch", "Yaw"]
     sensor_names = [x[1] for x in sensor_names]
-    # sumnames = [*[f"{x}_sum" for x in sensor_names],*[f"{x}_sum" for x in axes_names]]
-    # magnames = [*[f"{x}_mag" for x in sensor_names],*[f"{x}_mag" for x in axes_names]]
-    # diffnames = [*[f"{sensor_names[int(x[0])]}{sensor_names[int(x[1])]}_diff" for x in combs],*[f"{axes_names[int(x[0])]}{axes_names[int(x[1])]}_diff" for x in combs]]
-    # corrnames = [*[f"{sensor_names[int(x[0])]}{sensor_names[int(x[1])]}_corr" for x in combs],*[f"{axes_names[int(x[0])]}{axes_names[int(x[1])]}_corr" for x in combs]]
-    # new_columns = [*sumnames, *magnames, *diffnames, *corrnames]
     window_problem = False
 
     # Acceleration variables
@@ -396,7 +382,6 @@ def countCrossStatistics(raw_data: list, sensor_names: str, window:int=240, step
         corrmg_lr_ll.append(np.corrcoef(magg_lr, magg_ll)[0,-1])
 
     ## IMPORTANT - this order fits franchaks data, but labels above do not match
-    ## it's easy to change, but I don't have time for it now
     var_list = [
         ssum_x,ssum_y,ssum_z,
         corr_x_y,corr_x_z,corr_y_z,
@@ -498,8 +483,7 @@ def filterSensorData(data, path):
         
     ## We need to interpolate missing packages so the time series are comparable.
     ## Prepare the data for interpolation
-    # I think Im missing some functions + not sure on what files exactly this one is working with
-    # TO DO
+    ### UNFINISHED FUNCTION (but it was not used, as the sensor data was already prepared)
 
 def interpolateSensorData(inputData, frequency, sensor):
     
