@@ -7,7 +7,7 @@ from scipy.interpolate import interp1d
 from sklearn.decomposition import FastICA
 
 
-def load_data(filepath, sensor, sep="\t"):
+def load_data(filepath: str, sensor: str, sep: str = "\t") -> pd.DataFrame:
     
     '''
     Description
@@ -42,7 +42,7 @@ def load_data(filepath, sensor, sep="\t"):
     return pd.read_csv(filepath+file[0], sep=sep, skiprows=i)
 
 
-def select_sensor_columns(df, cols=['Acc_X', 'Acc_Y', 'Acc_Z', 'Roll', 'Pitch', 'Yaw']):
+def select_sensor_columns(df: pd.DataFrame, cols: list = ['Acc_X', 'Acc_Y', 'Acc_Z', 'Roll', 'Pitch', 'Yaw']) -> pd.DataFrame:
 
     '''
     Description
@@ -114,7 +114,7 @@ def standardize_data(data: pd.DataFrame, sensor_name: str) -> pd.DataFrame:
     return pd.DataFrame.from_dict(scaled_vals)
 
 
-def flatten_list(L):
+def flatten_list(L: list) -> list:
 
     '''
     Description
@@ -507,7 +507,7 @@ def extract_features(subjects: list, sensors: list, stop_iter: int = 1, save_raw
     return all_features
 
 
-def interpolate_sensor_data(inputData, frequency, sensor):
+def interpolate_sensor_data(inputData: pd.DataFrame, frequency: float, sensor: str) -> pd.DataFrame:
     
     '''
     Description
@@ -564,7 +564,7 @@ def interpolate_sensor_data(inputData, frequency, sensor):
     return pd.DataFrame(dataInterpolated, columns=columns)
 
 
-def isolate_respiration(subjects: list, sensors: list, stop_iter: int = 1, save_raw: bool = True):
+def isolate_respiration(subjects: list, sensors: list, stop_iter: int = 1, save_raw: bool = True) -> list:
     
     '''
     Description
