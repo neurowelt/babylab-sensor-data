@@ -1,49 +1,30 @@
-import os
-import typing
-import itertools
-import traceback
-import warnings
+import itertools, os, traceback
 import numpy as np
 import pandas as pd
-import scipy as sp
 from scipy.signal import medfilt
 from scipy.stats import kurtosis, skew
 from scipy.interpolate import interp1d
 from sklearn.decomposition import FastICA
 
 
-InfantTrunkMid = ("00B45AF6", "tMid") 
-InfantTrunkLeft = ("00B45AFD", "tL")
-InfantRightLeg = ("00B45AFC", "lR")
-InfantLeftLeg = ("00B45ADA", "lL")
-InfantHead = ("00B45ADB", "h")
-
-NAMES_DICT = {
-    "ankle":"lL",
-    "hip":"h",
-    "thigh":"tMid",
-}
-
-NAMES_TO_FRANCHAK = {
-    "tMid":"3",
-    "lL": "1",
-    "lR": "2"
-}
-
-PATHS = ["Freeplay Sensors/"+d+"/sensors/" for d in os.listdir("Freeplay Sensors") if ".D" not in d]
-# SENSORS = [InfantTrunkMid, InfantRightLeg, InfantLeftLeg]
-SENSORS = [InfantLeftLeg, InfantTrunkMid, InfantHead]
-RESPIRATION = [InfantTrunkMid,InfantTrunkLeft]
-
-def loadData(filepath, sensor, sep="\t"):
+def load_data(filepath, sensor, sep="\t"):
     
     '''
-    Input:
-        filepath: path to the file containing data
-        sensor: defines from which sensor to extract data
-        sep: column separator in the file
-    Output:
-        extracted data in a form of pandas dataframe
+    Description
+    -----------
+        Load the data from .txt files.
+
+    Arguments
+    ---------
+        ::  filepath - path to the file containing data
+
+        ::  sensor - defines from which sensor to extract data
+        
+        ::  sep - column separator in the file
+    
+    Returns
+    -------
+        ::  pd.DataFrame with extracted data
     '''
     
     file = [f for f in os.listdir(filepath) if sensor[0] in f]
@@ -61,28 +42,61 @@ def loadData(filepath, sensor, sep="\t"):
     return pd.read_csv(filepath+file[0], sep=sep, skiprows=i)
 
 
-def selectSensorColumns(df, cols=['Acc_X', 'Acc_Y', 'Acc_Z', 'Roll', 'Pitch', 'Yaw']):
+def select_sensor_columns(df, cols=['Acc_X', 'Acc_Y', 'Acc_Z', 'Roll', 'Pitch', 'Yaw']):
 
     '''
-    Select columns from which to extract features.
+    Description
+    -----------
+        Select columns from which to extract features.
     
-    Input:
-        df: DataFrame with sensor data
-        cols: names of columns to extract
+    Arguments
+    ---------
+        ::  df - DataFrame with sensor data
+        
+        ::  cols - names of columns to extract
+
+    Returns
+    -------
+        ::  a subset of the original DataFrame consisting of specified columns
+
+    Notes
+    -----
+        1)  I am sure I wanted this function to be in some way more elaborate... (Dec 2022)
     '''
     
     return df[cols]
 
 
-def standardizeData(data, sensor_name):
+def standardize_data(data: pd.DataFrame, sensor_name: str) -> pd.DataFrame:
 
     '''
-    Standardize data using given min-maxing.
-    Here we use values from Franchak et al. (2021).
+    Description
+    -----------
+        Standardize data using given min-maxing. Here the values from Franchak et al. (2021) were used as the min and max scales.
+
+    Arguments
+    ---------
+        ::  data - DataFrame containig raw sensor data to be standardized
+
+        ::  sensor_name - from which sensor the data comes from
+
+    Returns
+    -------
+        ::  DataFrame with sensor data scaled to Franchak et al. (2021) dataset
+
+    Notes
+    -----
+        1)  It was an attempt to somehow bring the dataset gathered from different sensors closer to the one from the article, didn't work of course. (Dec 2022)
     '''
 
     ranges = pd.read_csv('ranges_franchak.csv')
     scaled_vals = {}
+
+    NAMES_DICT = {
+        "ankle":"lL",
+        "hip":"h",
+        "thigh":"tMid",
+    }
 
     for sensor in ranges["sensor"]:
         our_sensor = NAMES_DICT[sensor.split("_")[0]]
@@ -100,62 +114,66 @@ def standardizeData(data, sensor_name):
     return pd.DataFrame.from_dict(scaled_vals)
 
 
-def flattenList(L):
+def flatten_list(L):
 
     '''
-    Flattens out a list.
-    Especially useful with strings and other
-    non-numerical objects.
+    Description
+    -----------
+        Flattens out a python array.
+
+    Arguments
+    ---------
+        ::  L - python array to flatten
+
+    Returns
+    -------
+        ::  flat_L - flattened python array
     '''
     
     flat_L = []
     
     for el in L:
         if isinstance(el,list):
-            flat_L.extend(flattenList(el))
+            flat_L.extend(flatten_list(el))
         else:
             flat_L.append(el)
 
     return flat_L
 
 
-def equalSplit(l: list, n: int) -> list:
-    return itertools.zip_longest(*[iter(l)]*n)
-
-
-def createDict(keys, vars) -> dict:
-    D = {}
-    for i in range(len(keys)):
-        D[keys[i]] = vars[i]
-    return D
-
-
-def countStatistics(df: pd.DataFrame, sensor_name:str, window:int=240, step:int=60) -> pd.DataFrame:
+def count_statistics(df: pd.DataFrame, sensor_name:str, window:int=240, step:int=60) -> pd.DataFrame:
     
     '''
-    Counts statistics for the data
-    based on a specified time window and in given time steps.
-    It calculates a series of statistics based on extracted windows.
+    Description
+    -----------
+        Counts statistics for the data based on a specified time window and in given time steps.
+        It calculates a series of statistics based on extracted windows.
     
-    Following Franchak et al. (2021) we will calculate:
-    - sum
-    - mean
-    - median
-    - kurtosis
-    - skew
-    - standard deviation
-    - minimum
-    - maximum
-    - 25th quantile
-    - 75th quantile
+        Following Franchak et al. (2021) we will calculate:
+        - sum
+        - mean
+        - median
+        - kurtosis
+        - skew
+        - standard deviation
+        - minimum
+        - maximum
+        - 25th quantile
+        - 75th quantile
     
-    Input:
-        df: DataFrame with sensor data
-        sensor_name: Takes the name of given sensor
-        window: the size of window to extract data from
-        step: the size of time step to move the window
-    Output:
-        stats: DataFrame with extracted features
+    Arguments
+    ---------
+        ::  df - DataFrame with sensor data
+        
+        ::  sensor_name - the name of a given sensor for which to calculate statistics
+        
+        ::  window - the size of window to extract data from
+        
+        ::  step - the size of time step to move the window
+
+    Returns
+    -------
+        ::  stats - DataFrame with calculated statistics
     '''
     
     stats = []
@@ -196,15 +214,31 @@ def countStatistics(df: pd.DataFrame, sensor_name:str, window:int=240, step:int=
         stats.append(temp_s)
         
     new_columns.append(["{}_{}_{}".format(y,sensor_name,x) for x in measures for y in columns])
-    new_columns = flattenList(new_columns)
+    new_columns = flatten_list(new_columns)
     
     return pd.DataFrame(stats,columns=new_columns)
 
 
-def countCrossStatistics(raw_data: list, sensor_names: str, window:int=240, step:int=60) -> pd.DataFrame:
+def count_cross_statistics(raw_data: list, sensor_names: str, window:int=240, step:int=60) -> pd.DataFrame:
 
     '''
-    This function counts the cross-sensor and cross-axis statistics for a group of sensors for a given subject
+    Description
+    -----------
+        This function counts the cross-sensor and cross-axis statistics for a group of sensors for a given subject.
+
+    Arguments
+    ---------
+        ::  raw_data - raw sensor data in a form of python array with values
+
+        ::  sensor_names - names of sensors for which the cross-axis and cross-sensor statistics will be calculated
+
+        ::  window - the size of window to extract data from
+        
+        ::  step - the size of time step to move the window
+
+    Returns
+    -------
+        ::  DataFrame with all cross-sensor and cross-axis statistics
     '''
 
     ## Create useful variables
@@ -215,7 +249,6 @@ def countCrossStatistics(raw_data: list, sensor_names: str, window:int=240, step
     axes_names = ["X", "Y", "Z"]
     gyr_names = ["Roll", "Pitch", "Yaw"]
     sensor_names = [x[1] for x in sensor_names]
-    window_problem = False
 
     # Acceleration variables
     ssum_x: list = []
@@ -400,16 +433,40 @@ def countCrossStatistics(raw_data: list, sensor_names: str, window:int=240, step
         diffmg_tmid_lr,diffmg_tmid_ll,diffmg_lr_ll,
     ]
 
-    return pd.DataFrame.from_dict(createDict(new_columns,var_list),orient="columns")
+    # Create dict out of all
+    final_d = {new_columns[i]:var_list[i] for i in range(len(new_columns))}
+
+    return pd.DataFrame.from_dict(final_d,orient="columns")
 
 
-def extractFeatures(subjects: list, sensors: list, stop_iter: int = 1, save_raw: bool = True, save_each: bool = True, window: int = 240, step: int = 60, standardize: bool = True) -> dict:
+def extract_features(subjects: list, sensors: list, stop_iter: int = 1, save_raw: bool = True, save_each: bool = True, window: int = 240, step: int = 60, standardize: bool = True) -> dict:
     
     '''
-    Extract features for each subject and save it into .csv
+    Description
+    -----------
+        Extract features for each subject and create a dicitonary with extracted features for each subject.
+
+    Arguments
+    ---------
+        ::  subjects - list of subject to iterate over
+
+        ::  sensors - list of sensors to iterate over
+
+        ::  stop_iter - stop iteration at this counter value
+
+        ::  save_raw - save raw DataFrames to .csv for each subject (raw is before any interpolation, standarization, etc.)
+
+        ::  save_each - save data for each subject into a .csv file
+
+        ::  window - argument specific for functions counting statistics, defines the size of moving window
+
+        ::  step - argument specific for functions counting statistics, defines the length of movement of the window
+
+        ::  standardize - if True, will min-max the sensor data before counting statistics
     
-    Important:
-    This is a draft, column names will eventually be computed from the dataframe
+    Notes
+    -----
+        1)  This is a draft, column names will eventually be computed from the dataframe.
     '''
     
     ## Create variables
@@ -426,18 +483,18 @@ def extractFeatures(subjects: list, sensors: list, stop_iter: int = 1, save_raw:
         features: list = [] #-- Here we deposit calculated stats for given subject
         raw_data: list = [] #-- Here we store raw sensor data
         for sensor in sensors:
-            rawDataFrame = loadData(subject, sensor)
+            rawDataFrame = load_data(subject, sensor)
             if save_raw:
                 print("Saving raw DataFrame.\n")
                 rawDataFrame.to_csv(f"{str(sub_name)}_{str(sensor[1])}_rawData.csv")
             if standardize:
-                current_df = standardizeData(interpolateSensorData(selectSensorColumns(rawDataFrame),60,sensor),sensor[1])
+                current_df = standardize_data(interpolate_sensor_data(select_sensor_columns(rawDataFrame),60,sensor),sensor[1])
             else:
-                current_df = interpolateSensorData(selectSensorColumns(rawDataFrame),60,sensor)
+                current_df = interpolate_sensor_data(select_sensor_columns(rawDataFrame),60,sensor)
             ## standardize data to Franchaks
             raw_data.append(current_df)
-            features.append(countStatistics(current_df, str(sensor[1]))) #-- Count statistics for sensor
-        features.insert(0,countCrossStatistics(raw_data, sensors)) # Count cross statistics
+            features.append(count_statistics(current_df, str(sensor[1]), window, step)) #-- Count statistics for sensor
+        features.insert(0,count_cross_statistics(raw_data, sensors, window, step)) # Count cross statistics
 
         ## Save each subject here if save_each is True
         if save_each:
@@ -450,56 +507,27 @@ def extractFeatures(subjects: list, sensors: list, stop_iter: int = 1, save_raw:
     return all_features
 
 
-def filterSensorData(data, path):
+def interpolate_sensor_data(inputData, frequency, sensor):
     
     '''
-    This function is going to load the data and return the interpolated data.
+    Description
+    -----------
+        This function is going to interpolate the data from the sensor data to remove missing values. Initially a spline inteporlation is done,
+        but in the future further expansions can be developed.
 
-    Input: data -> input loaded data
-            path -> path for a one sensor file example 
-
-    Output: frequency -> the frequency of the sensor
-            dataFiltered -> the filtered data
-    '''
-    
-    ## Start the process
-    print("Filtering and Interpolating data \n")
-    
-    try:
-        # Get the first file of the list and load it
-        frequencyFile = pd.read_csv(path, sep="\t", skiprows=4) # that highly depends on files structure
-        for iRow in range(frequencyFile.shape[0]):
-            for iColumn in range(frequencyFile.shape[1]):
-                if ("Hz" in frequencyFile.iloc[iRow,iColumn]):
-                    try:
-                        frequency = float(frequencyFile.iloc[iRow,iColumn].split("Hz")[0].strip())
-                    except Exception as e:
-                        frequency = input("There waas a problem - please write the sensor frequency: ")
-                        
-                    print("Frequency value of {} Hz found in the sensor file.".format(frequency))
-    except Exception as e:
-        print("A problem ocurred: {} \n Inputting 60 Hz as default".format(e.args))
-        frequency = 60.0
+    Arguments
+    ---------
+        ::  inputData - the original data 
         
-    ## We need to interpolate missing packages so the time series are comparable.
-    ## Prepare the data for interpolation
-    ### UNFINISHED FUNCTION (but it was not used, as the sensor data was already prepared)
+        ::  frequency - frequency of the data acquisition
 
-def interpolateSensorData(inputData, frequency, sensor):
-    
-    '''
-    This function is going to interpolate the data from the sensor data to
-    remove missing values. Initially a spline inteporlation is done, but in
-    the future further expansions can be developed.
+    Returns
+    -------
+        ::  dataInterpolated - the interpolated and filtered data
 
-    Input: 
-        inputData: The original data 
-        frequency: frequency of the data acquisition
-    Ouput: 
-        dataInterpolated: The interpolated and filtereddata.
-
-    Warnings:
-        VisibleDeprecationWarning - I don't really know where is this one coming from, but features seem to be all alright
+    Warnings
+    --------
+        ::  VisibleDeprecationWarning - I don't really know where is this one coming from, but features seem to be all alright
     '''
 
     # We remove the columns 1-2 as we will remove them as well later on
@@ -537,8 +565,29 @@ def interpolateSensorData(inputData, frequency, sensor):
 
 
 def isolate_respiration(subjects: list, sensors: list, stop_iter: int = 1, save_raw: bool = True):
-    ## Iterate over each subject
+    
+    '''
+    Description
+    -----------
+        Perform FastICA to isolate respiration component, based on sensor measurements from the trunk.
+
+    Arguments
+    ---------
+        ::  subjects - list of subjects to iterate over
+
+        ::  sensors - list of sensors to iterate over
+
+        ::  stop_iter - stop iteration at this counter value
+
+        ::  save_raw - save DataFrames to .csv for each subject
+
+    Returns
+    -------
+        ::  comps - python array containing DataFrames with ICA components
+    '''
+
     iii: int = 0
+    comps: list = []
     while iii != stop_iter:
         subject = subjects[iii]
         sub_name = subject.split("/")[1]
@@ -547,7 +596,7 @@ def isolate_respiration(subjects: list, sensors: list, stop_iter: int = 1, save_
         print(f"Current subject: {sub_name}\n")
 
         for sensor in sensors:
-            rawDataFrame = interpolateSensorData(selectSensorColumns(loadData(subject, sensor),cols=['Acc_X', 'Acc_Y', 'Acc_Z', "Gyr_X", "Gyr_Y","Gyr_Z", "Mag_X", "Mag_Y", "Mag_Z"]),60,sensor)
+            rawDataFrame = interpolate_sensor_data(select_sensor_columns(load_data(subject, sensor),cols=['Acc_X', 'Acc_Y', 'Acc_Z', "Gyr_X", "Gyr_Y","Gyr_Z", "Mag_X", "Mag_Y", "Mag_Z"]),60,sensor)
             rawDataFrame.columns = [f"{c}_{sensor[1]}" for c in rawDataFrame.columns]
             raws.append(rawDataFrame)
 
@@ -563,11 +612,33 @@ def isolate_respiration(subjects: list, sensors: list, stop_iter: int = 1, save_
         ICA = FastICA(n_components=3)
         Component = ICA.fit_transform(raws_conc.values)
         comp_d = pd.DataFrame(data=Component, columns=["IC1","IC2","IC3"])
+        comps.append(comp_d)
         comp_d.to_csv(f"ics_tMid_{sub_name}.csv")
 
         iii += 1
+        if iii == len(subjects): break
+    
+    return comps
     
 
 if __name__ == "__main__":
-    # extractFeatures(PATHS,SENSORS,save_raw=False)
+
+    # Convention for BabyLab sensor data
+    InfantTrunkMid = ("00B45AF6", "tMid") 
+    InfantTrunkLeft = ("00B45AFD", "tL")
+    InfantRightLeg = ("00B45AFC", "lR")
+    InfantLeftLeg = ("00B45ADA", "lL")
+    InfantHead = ("00B45ADB", "h")
+
+    NAMES_TO_FRANCHAK = {
+        "tMid":"3",
+        "lL": "1",
+        "lR": "2"
+    }
+
+    PATHS = ["Freeplay Sensors/"+d+"/sensors/" for d in os.listdir("Freeplay Sensors") if ".D" not in d]
+    SENSORS = [InfantTrunkMid, InfantRightLeg, InfantLeftLeg]
+    RESPIRATION = [InfantTrunkMid,InfantTrunkLeft]
+
+    extract_features(PATHS,SENSORS,save_raw=False)
     isolate_respiration(PATHS,RESPIRATION)
